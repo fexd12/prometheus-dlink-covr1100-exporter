@@ -1,5 +1,73 @@
-# Prometheus Exporter for the MB8600 Modem
+# Prometheus Exporter for the COVR200 Modem
+this is a fork of the https://github.com/jahkeup/prometheus-moto-exporter
 
+aiming to work with DLINK COVR 2200. Currently its a work in progress, and the code is subpar focusing on results.
+
+## Whats working? 
+
+### Dashboard:
+[This is a WIP Dashboard](./grafana/dashboard.json)
+
+Assumes the
+- prometheus job is called `router`
+- the port is `9731`
+- the host is `router`
+
+### Metrics
+Sample Query
+
+`irate(node_network_receive_bytes_total{instance=~"router:9731",job=~"router", device!="WAN"}[5m])/1024`
+
+
+Exporting the following metrics
+via: 
+
+`prometheus-moto-exporter --endpoint "http://192.168.1.1/HNAP1/" --username Admin --password <password> --debug --bind "0.0.0.0:9731"`
+
+
+```
+node_device_hardware_info{boot_file="",customer_version="COVR-2202",hardware_version="A1",serial="Medeleine",software_version="1.05",spec_version="COVR-2200"} 1
+node_network_client_interface{Type="LAN"} 9
+node_network_client_interface{Type="OFFLINE"} 5
+node_network_client_interface{Type="WiFi_2.4G"} 11
+node_network_client_interface{Type="WiFi_2.4G_MeshExtender"} 1
+node_network_client_interface{Type="WiFi_5G"} 8
+# HELP node_network_client_signal Network Clients signal
+# TYPE node_network_client_signal gauge
+node_network_client_signal{DeviceName="macbook",MacAddress="FA:KE:MA:CA:DR:ES",NickName="BeausMBP",ReserveIP="192.168.1.237",Type="WiFi_2.4G"} 79
+# HELP node_network_client_state Network Clients status
+# TYPE node_network_client_state gauge
+node_network_client_state{DeviceName="",MacAddress="FA:KE:MA:CA:DR:ES",NickName="BeausMBP",ReserveIP="192.168.1.237",Type="WiFi_2.4G"} 1
+# HELP node_network_receive_bytes_total received bytes
+# TYPE node_network_receive_bytes_total gauge
+node_network_receive_bytes_total{device="LAN",interface_id="NO:TA:RE:AL:MA:C1"} 5.40385677e+08
+node_network_receive_bytes_total{device="WAN",interface_id="NO:TA:RE:AL:MA:C1"} 3.690473172e+09
+node_network_receive_bytes_total{device="WLAN2.4G",interface_id="NO:TA:RE:AL:MA:C1"} 3.391108799e+09
+node_network_receive_bytes_total{device="WLAN5G",interface_id="NO:TA:RE:AL:MA:C1"} 3.151773323e+09
+# HELP node_network_receive_packets_total RXPackets status
+# TYPE node_network_receive_packets_total gauge
+node_network_receive_packets_total{device="LAN",interface_id="NO:TA:RE:AL:MA:C1"} 4.276643e+06
+node_network_receive_packets_total{device="WAN",interface_id="NO:TA:RE:AL:MA:C1"} 3.193817e+06
+node_network_receive_packets_total{device="WLAN2.4G",interface_id="NO:TA:RE:AL:MA:C1"} 4.777394e+06
+node_network_receive_packets_total{device="WLAN5G",interface_id="NO:TA:RE:AL:MA:C1"} 4.286088e+06
+# HELP node_network_transmit_bytes_total sent bytes
+# TYPE node_network_transmit_bytes_total gauge
+node_network_transmit_bytes_total{device="LAN",interface_id="NO:TA:RE:AL:MA:C1"} 3.786262581e+09
+node_network_transmit_bytes_total{device="WAN",interface_id="NO:TA:RE:AL:MA:C1"} 3.91570885e+08
+node_network_transmit_bytes_total{device="WLAN2.4G",interface_id="NO:TA:RE:AL:MA:C1"} 3.415691373e+09
+node_network_transmit_bytes_total{device="WLAN5G",interface_id="NO:TA:RE:AL:MA:C1"} 1.757743152e+09
+# HELP node_network_transmit_packets_total TXPackets status
+# TYPE node_network_transmit_packets_total gauge
+node_network_transmit_packets_total{device="LAN",interface_id="NO:TA:RE:AL:MA:C1"} 3.51805e+06
+node_network_transmit_packets_total{device="WAN",interface_id="NO:TA:RE:AL:MA:C1"} 1.565734e+06
+node_network_transmit_packets_total{device="WLAN2.4G",interface_id="NO:TA:RE:AL:MA:C1"} 8.550544e+06
+node_network_transmit_packets_total{device="WLAN5G",interface_id="NO:TA:RE:AL:MA:C1"} 8.413339e+06
+```
+
+
+Source README.md below
+
+------
 This is a prometheus exporter written with the intention of exporting metrics for a Motorola MB8600 device.
 
 My device, as configured by the CableTown ISP service, has SNMP disabled. With SNMP disabled, I wanted another route to be able to collect these metrics.
