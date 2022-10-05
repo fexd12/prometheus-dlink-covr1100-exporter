@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,8 +27,9 @@ const (
 	labelCustomerVersion = "customer_version"
 	labelSpecVersion     = "spec_version"
 	labelBootFile        = "boot_file"
-
-	namespace = "moto"
+	labelFrequency       = "device"
+	labelInterfaceId     = "interface_id"
+	namespace            = "node"
 )
 
 type serverRegistry interface {
@@ -36,22 +38,23 @@ type serverRegistry interface {
 }
 
 type Server struct {
-	gatherer *gather.Gatherer
-
+	gatherer   *gather.Gatherer
+	clients    *clientMetrics
 	upstream   *upstreamMetrics
 	downstream *downstreamMetrics
 	device     *deviceMetrics
-
-	meta *metaMetrics
+	connection *connectionMetrics
+	meta       *metaMetrics
 
 	registry serverRegistry
 }
 
 func NewServer(gatherer *gather.Gatherer) (*Server, error) {
 	s := &Server{
-		gatherer: gatherer,
-
+		gatherer:   gatherer,
+		clients:    NewClientMetric(),
 		upstream:   NewUpstreamMetrics(),
+		connection: NewConnectionMetrics(),
 		downstream: NewDownstreamMetrics(),
 		device:     NewDeviceMetrics(),
 		meta:       NewMetaMetrics(),
@@ -85,7 +88,9 @@ func (s *Server) RegisterMetrics(reg serverRegistry) error {
 	}{
 		s.upstream,
 		s.downstream,
+		s.connection,
 		s.device,
+		s.clients,
 		s.meta,
 	}
 
@@ -113,6 +118,7 @@ func (s *Server) Collect() error {
 	if err != nil {
 		return err
 	}
+
 	collect, err := s.gatherer.Gather()
 	if err != nil {
 		return err
@@ -126,6 +132,20 @@ func (s *Server) Collect() error {
 		s.upstream.RecordOne(&info)
 	}
 
+	for _, info := range collect.Connection {
+		s.connection.RecordOne(&info)
+	}
+	iFace := map[string]float64{}
+	for _, info := range collect.Clients.Envelope.Body.GetClientInfoResponse.ClientInfoLists.ClientInfo {
+		if _, ok := iFace[info.Type]; !ok {
+			iFace[info.Type] = 0
+		}
+		iFace[info.Type]++
+		s.clients.RecordOne(&info)
+	}
+	for k, v := range iFace {
+		s.clients.RecordType(k, v)
+	}
 	s.device.RecordOne(collect)
 
 	return nil
@@ -161,7 +181,7 @@ func (s *Server) Run(ctx context.Context, addr string) error {
 	group, groupCtx := errgroup.WithContext(collectCtx)
 	group.Go(func() error {
 		log := log.WithField("context", "collect")
-		ticker := time.NewTicker(time.Second * 30)
+		ticker := time.NewTicker(time.Second * 10)
 		defer ticker.Stop()
 
 		collect := func() {
@@ -358,6 +378,179 @@ type upstreamMetrics struct {
 	Frequency  *prometheus.GaugeVec
 	SymbolRate *prometheus.GaugeVec
 	Power      *prometheus.GaugeVec
+}
+
+type clientMetrics struct {
+	SignalStrength *prometheus.GaugeVec
+	State          *prometheus.GaugeVec
+	iFace          *prometheus.GaugeVec
+}
+
+type connectionMetrics struct {
+	// 0 or 1
+	RXDropped *prometheus.GaugeVec
+	Session   *prometheus.GaugeVec
+	Errors    *prometheus.GaugeVec
+	Sent      *prometheus.GaugeVec
+	Received  *prometheus.GaugeVec
+	TXPackets *prometheus.GaugeVec
+	RXPackets *prometheus.GaugeVec
+	TXDropped *prometheus.GaugeVec
+}
+
+// upstreamMetrics are the metrics maintained for Downstream Channels.
+func NewConnectionMetrics() *connectionMetrics {
+	//const subsystem = "network"
+
+	labels := []string{
+		labelFrequency,
+		labelInterfaceId,
+	}
+	return &connectionMetrics{
+		TXPackets: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_transmit_packets",
+			Name:      "total",
+			Help:      "TXPackets status",
+		}, labels),
+		RXPackets: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_receive_packets",
+			Name:      "total",
+			Help:      "RXPackets status",
+		}, labels),
+		Sent: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_transmit_bytes",
+			Name:      "total",
+			Help:      "sent bytes",
+		}, labels),
+		Received: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_receive_bytes",
+			Name:      "total",
+			Help:      "received bytes",
+		}, labels),
+		TXDropped: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_transmit_drop",
+			Name:      "total",
+			Help:      "sent bytes",
+		}, labels),
+		RXDropped: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_receive_drop",
+			Name:      "total",
+			Help:      "received bytes",
+		}, labels),
+	}
+}
+
+func (m *connectionMetrics) RegisterMetrics(reg prometheus.Registerer) error {
+	cs := []prometheus.Collector{
+		m.Received,
+		m.Sent,
+		m.RXPackets,
+		m.TXPackets,
+	}
+
+	for _, c := range cs {
+		err := reg.Register(c)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *connectionMetrics) RecordOne(info *hnap.GetInterfaceStatisticsResponse) {
+	labels := prometheus.Labels{
+		labelFrequency:   fmt.Sprintf("%s", info.Interface),
+		labelInterfaceId: fmt.Sprintf("%s", info.MACAddress),
+	}
+	received, _ := strconv.Atoi(info.InterfaceStatistics.StatisticInfo.Received)
+	m.Received.With(labels).Set(float64(received))
+	sent, _ := strconv.Atoi(info.InterfaceStatistics.StatisticInfo.Sent)
+	m.Sent.With(labels).Set(float64(sent))
+	trasmit, _ := strconv.Atoi(info.InterfaceStatistics.StatisticInfo.TXPackets)
+	m.TXPackets.With(labels).Set(float64(trasmit))
+	rxreceived, _ := strconv.Atoi(info.InterfaceStatistics.StatisticInfo.RXPackets)
+	m.RXPackets.With(labels).Set(float64(rxreceived))
+	rxdrop, _ := strconv.Atoi(info.InterfaceStatistics.StatisticInfo.RXDropped)
+	m.RXDropped.With(labels).Set(float64(rxdrop))
+	txdrop, _ := strconv.Atoi(info.InterfaceStatistics.StatisticInfo.TXDropped)
+	m.TXDropped.With(labels).Set(float64(txdrop))
+}
+
+// NewClientMetric are the metrics maintained for clients.
+func NewClientMetric() *clientMetrics {
+	//const subsystem = "network"
+	labels := []string{
+		"DeviceName",
+		"MacAddress",
+		"NickName",
+		"ReserveIP",
+		"Type",
+	}
+	return &clientMetrics{
+		SignalStrength: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_client",
+			Name:      "signal",
+			Help:      "Network Clients signal",
+		}, labels),
+		State: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_client",
+			Name:      "state",
+			Help:      "Network Clients status",
+		}, labels),
+		iFace: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: "network_client",
+			Name:      "interface",
+			Help:      "Network Clients on interface",
+		}, []string{"Type"}),
+	}
+}
+
+func (m *clientMetrics) RegisterMetrics(reg prometheus.Registerer) error {
+	cs := []prometheus.Collector{
+		m.State,
+		m.SignalStrength,
+		m.iFace,
+	}
+
+	for _, c := range cs {
+		err := reg.Register(c)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *clientMetrics) RecordOne(info *hnap.ClientInfo) {
+	labels := prometheus.Labels{
+		"DeviceName": info.DeviceName,
+		"MacAddress": info.MacAddress,
+		"NickName":   info.NickName,
+		"ReserveIP":  info.ReserveIP,
+		"Type":       info.Type,
+	}
+	state := 0
+	if info.State == "UNBLOCKED" {
+		state = 1
+	}
+	m.State.With(labels).Set(float64(state))
+	strength, _ := strconv.Atoi(info.SignalStrength)
+	m.SignalStrength.With(labels).Set(float64(strength))
+}
+
+func (m *clientMetrics) RecordType(iFace string, count float64) {
+	m.iFace.With(prometheus.Labels{"Type": iFace}).Set(count)
 }
 
 // upstreamMetrics are the metrics maintained for Downstream Channels.
