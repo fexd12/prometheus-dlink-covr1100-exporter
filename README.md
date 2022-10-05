@@ -7,6 +7,7 @@ aiming to work with DLINK COVR 2200. Currently its a work in progress, and the c
 
 ### Dashboard:
 [This is a WIP Dashboard](./grafana/dashboard.json)
+![Alt text](./grafana/dashboard.png "grafana dashboard")
 
 Assumes the
 - prometheus job is called `router`
