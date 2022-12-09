@@ -34,7 +34,7 @@ type DeviceInformation struct {
 				SupportMyDLinkAbilities string `json:"SupportMyDLinkAbilities"`
 				SupportMyDLinkStatus    string `json:"SupportMyDLinkStatus"`
 				TZLocation              string `json:"TZLocation"`
-				Tasks                   string `json:"Tasks"`
+				// Tasks                   string `json:"Tasks"`
 				Type                    string `json:"Type"`
 				VendorName              string `json:"VendorName"`
 			} `json:"GetDeviceSettingsResponse"`

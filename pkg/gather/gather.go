@@ -68,39 +68,55 @@ func (g *Gatherer) Login() error {
 	// 1. Request challenge, uid, and public key from endpoint. We have to use a
 	// valid username to be given a login challenge.
 
-	challenge := map[string]interface{}{
-		// Wrap the message in the HNAP action name.
-		"Login": map[string]string{
-			"Action":   "request",
-			"Username": g.username,
-		},
-	}
-	data, err := json.Marshal(challenge)
+	// challenge := map[string]interface{}{
+	// 	// Wrap the message in the HNAP action name.
+	// 	"Login": map[string]string{
+	// 		"Action":   "request",
+	// 		"Username": g.username,
+	// 	},
+	// }
+	// data, err := json.Marshal(challenge)
+	// if err != nil {
+	// 	return err
+	// }
+
+	log.Info("Request challenge")
+
+	body := `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><Login xmlns="http://purenetworks.com/HNAP1/"><Action>request</Action><Username>Admin</Username><LoginPassword></LoginPassword><Captcha></Captcha></Login></soap:Body></soap:Envelope>`
+
+	req, err := http.NewRequest(http.MethodPost, g.endpoint.String(), bytes.NewReader([]byte(body)))
+
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, g.endpoint.String(), bytes.NewReader(data))
-	if err != nil {
-		return err
+	uidCookie := &http.Cookie{
+		Name:  "uid",
+		Value: "null",
 	}
+
+	req.AddCookie(uidCookie)
+
 	req.Header.Add(hSOAPAction, loginURI)
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Content-Type", "text/xml; charset=UTF-8")
+	req.Header.Add("Accept", "*/*")
 
-	log.Debug("requesting challenge")
+	log.Debug("submitting response")
+
 	resp, err := g.client.Do(req)
 	if err != nil {
-		logrus.WithError(err).Error("unable to request challenge")
-		return err
+		log.WithError(err).Error("unable to login")
+		// return err
 	}
+
 	log.Debug("accepting challenge")
 
 	type LoginResponse struct {
-		XMLName   xml.Name `xml:"LoginResponse"`
-		Challenge string   `xml:"Challenge"`
-		PublicKey string   `xml:"PublicKey"`
-		Cookie    string   `xml:"Cookie"`
+		XMLName     xml.Name `xml:"LoginResponse"`
+		LoginResult string   `xml:"LoginResult"`
+		Challenge   string   `xml:"Challenge"`
+		PublicKey   string   `xml:"PublicKey"`
+		Cookie      string   `xml:"Cookie"`
 	}
 
 	type Body struct {
@@ -140,17 +156,18 @@ func (g *Gatherer) Login() error {
 		return err
 	}
 
-	uidCookie := &http.Cookie{
+	uidCookie = &http.Cookie{
 		Name:  "uid",
 		Value: string(hnapResponse.LoginResponse.Cookie),
 	}
+
 	pkCookie := &http.Cookie{
 		Name:  "PrivateKey",
 		Value: string(privateKey),
 	}
 
 	// 3. Submit response to challenge to complete the login.
-	body := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><Login xmlns="http://purenetworks.com/HNAP1/"><Action>login</Action><Username>Admin</Username><LoginPassword>%s</LoginPassword><Captcha></Captcha></Login></soap:Body></soap:Envelope>`, string(passKey))
+	body = fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><Login xmlns="http://purenetworks.com/HNAP1/"><Action>login</Action><Username>Admin</Username><LoginPassword>%s</LoginPassword><Captcha></Captcha></Login></soap:Body></soap:Envelope>`, string(passKey))
 
 	req, err = g.requestWithKey(loginAction, loginURI, bytes.NewReader([]byte(body)), privateKey)
 	if err != nil {
@@ -162,6 +179,7 @@ func (g *Gatherer) Login() error {
 
 	log.Debug("submitting response")
 	resp, err = g.client.Do(req)
+
 	if err != nil {
 		log.WithError(err).Error("unable to login")
 		return err
@@ -177,7 +195,7 @@ func (g *Gatherer) Login() error {
 	if resp.StatusCode != http.StatusOK {
 		return errors.New("challenge response rejected")
 	}
-
+	
 	// Update client to use our new session
 
 	log.Trace("updating gatherer HTTP client")
@@ -200,7 +218,7 @@ func (g *Gatherer) getInterfaceStatistics() ([]byte, error) {
 
 	log := logrus.WithField("action", actionURI)
 
-	data := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetMultipleHNAPs xmlns=\"http://purenetworks.com/HNAP1/\"><GetInterfaceStatistics xmlns=\"http://purenetworks.com/HNAP1/\"><Interface>WAN</Interface></GetInterfaceStatistics><GetInterfaceStatistics xmlns=\"http://purenetworks.com/HNAP1/\"><Interface>LAN</Interface></GetInterfaceStatistics><GetInterfaceStatistics xmlns=\"http://purenetworks.com/HNAP1/\"><Interface>WLAN2.4G</Interface></GetInterfaceStatistics><GetInterfaceStatistics xmlns=\"http://purenetworks.com/HNAP1/\"><Interface>WLAN5G</Interface></GetInterfaceStatistics></GetMultipleHNAPs></soap:Body></soap:Envelope>"
+	data := `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetMultipleHNAPs xmlns="http://purenetworks.com/HNAP1/"><GetInterfaceStatistics xmlns="http://purenetworks.com/HNAP1/"><Interface>WAN</Interface></GetInterfaceStatistics><GetInterfaceStatistics xmlns="http://purenetworks.com/HNAP1/"><Interface>LAN</Interface></GetInterfaceStatistics><GetInterfaceStatistics xmlns="http://purenetworks.com/HNAP1/"><Interface>WLAN2.4G</Interface></GetInterfaceStatistics><GetInterfaceStatistics xmlns="http://purenetworks.com/HNAP1/"><Interface>WLAN5G</Interface></GetInterfaceStatistics></GetMultipleHNAPs></soap:Body></soap:Envelope>`
 
 	g.mu.RLock()
 	unlock := unlockGuarded(g.mu.RLocker())
@@ -235,7 +253,7 @@ func (g *Gatherer) GetLoginStatus() (int, error) {
 
 	log := logrus.WithField("action", actionURI)
 
-	data := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetCurrentInternetStatus xmlns=\"http://purenetworks.com/HNAP1/\"><InternetStatus>true</InternetStatus></GetCurrentInternetStatus></soap:Body></soap:Envelope>"
+	data := `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetCurrentInternetStatus xmlns="http://purenetworks.com/HNAP1/"><InternetStatus>true</InternetStatus></GetCurrentInternetStatus></soap:Body></soap:Envelope>`
 
 	g.mu.RLock()
 	unlock := unlockGuarded(g.mu.RLocker())
@@ -263,7 +281,7 @@ func (g *Gatherer) getClientInfo() ([]byte, error) {
 
 	log := logrus.WithField("action", actionURI)
 
-	data := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetClientInfo xmlns=\"http://purenetworks.com/HNAP1/\"/></soap:Body></soap:Envelope>"
+	data := `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetClientInfo xmlns="http://purenetworks.com/HNAP1/"/></soap:Body></soap:Envelope>`
 
 	g.mu.RLock()
 	unlock := unlockGuarded(g.mu.RLocker())
@@ -292,18 +310,19 @@ func (g *Gatherer) getClientInfo() ([]byte, error) {
 	return jsonBody.Bytes(), err
 }
 func (g *Gatherer) getInternetConnection() ([]byte, error) {
-	const actionName = "GetCurrentInternetStatus"
+	const actionName = "GetInternetConnUpTime"
 	const actionURI = "http://purenetworks.com/HNAP1/" + actionName
 
 	log := logrus.WithField("action", actionURI)
 
-	data := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetCurrentInternetStatus xmlns=\"http://purenetworks.com/HNAP1/\"><InternetStatus>true</InternetStatus></GetCurrentInternetStatus></soap:Body></soap:Envelope>"
+	data := `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetInternetConnUpTime xmlns="http://purenetworks.com/HNAP1/"/></soap:Body></soap:Envelope>`
 
 	g.mu.RLock()
 	unlock := unlockGuarded(g.mu.RLocker())
 	defer unlock()
 
 	req, err := g.request(actionName, actionURI, bytes.NewReader([]byte(data)))
+
 	if err != nil {
 		log.Error("unable to prepare request")
 		return nil, err
@@ -315,13 +334,16 @@ func (g *Gatherer) getInternetConnection() ([]byte, error) {
 	}
 	unlock()
 
+	b, err := io.ReadAll(resp.Body)
+
 	defer resp.Body.Close()
 
-	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
+
 	xmlBody := strings.NewReader(string(b))
+
 	jsonBody, err := xj.Convert(xmlBody)
 	return jsonBody.Bytes(), err
 }
@@ -331,7 +353,7 @@ func (g *Gatherer) getDeviceSettings() ([]byte, error) {
 
 	log := logrus.WithField("action", actionURI)
 
-	data := "<?xml version=\"1.0\" encoding=\"utf-8\"?><soap:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><GetDeviceSettings xmlns=\"http://purenetworks.com/HNAP1/\" /></soap:Body></soap:Envelope>"
+	data := `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetDeviceSettings xmlns="http://purenetworks.com/HNAP1"/></soap:Body></soap:Envelope>`
 
 	g.mu.RLock()
 	unlock := unlockGuarded(g.mu.RLocker())
@@ -357,6 +379,7 @@ func (g *Gatherer) getDeviceSettings() ([]byte, error) {
 	}
 	xmlBody := strings.NewReader(string(b))
 	jsonBody, err := xj.Convert(xmlBody)
+
 	return jsonBody.Bytes(), err
 }
 
@@ -370,15 +393,19 @@ func (g *Gatherer) Gather() (*Collection, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var response hnap.GetMultipleHNAPsResponse
 	response.HNAP = make(map[string]json.RawMessage)
 	response.HNAP["ConnectionInfo"] = connectionInfo
-	var InternetConnectionResponse hnap.InternetConnectionResponse
-	err = json.Unmarshal(internetConnectionStatus, &InternetConnectionResponse)
+
+	var InternetConnUpTimeResponse hnap.InternetConnUpTimeResponse
+
+	err = json.Unmarshal(internetConnectionStatus, &InternetConnUpTimeResponse)
 	if err != nil {
 		return nil, err
 	}
-	online := InternetConnectionResponse.Envelope.Body.GetCurrentInternetStatusResponse.GetCurrentInternetStatusResult == "OK_CONNECTED"
+	online := InternetConnUpTimeResponse.Envelope.Body.GetInternetConnUpTimeResponse.GetInternetConnUpTimeResult == "OK"
+	
 	// device information
 	info, err := g.getDeviceSettings()
 	if err != nil {
@@ -428,11 +455,11 @@ func (g *Gatherer) Gather() (*Collection, error) {
 	}
 
 	return &Collection{
-		//Upstream: upstream.Channels,
-		//Downstream: downstream.Channels,
+		// Upstream: upstream.Channels,
+		// Downstream: downstream.Channels,
 		Connection:      connection.Envelope.Body.GetMultipleHNAPsResponse.GetInterfaceStatisticsResponse,
 		Online:          online,
-		Clients:         clients,
+		Clients:         clients.Envelope.Body.GetClientInfoResponse.ClientInfoLists.ClientInfo,
 		SoftwareVersion: software.Envelope.Body.GetDeviceSettingsResponse.FirmwareVersion,
 		SpecVersion:     software.Envelope.Body.GetDeviceSettingsResponse.ModelName,
 		HardwareVersion: software.Envelope.Body.GetDeviceSettingsResponse.HardwareVersion,
@@ -458,7 +485,7 @@ func (g *Gatherer) requestWithKey(actionName, actionURI string, data io.Reader, 
 		return nil, err
 	}
 
-	req.Header.Add(hSOAPAction, fmt.Sprintf(`%s`, actionURI))
+	req.Header.Add(hSOAPAction, fmt.Sprintf(`"%s"`, actionURI))
 	req.Header.Add(hHNAPAuth, fmt.Sprintf("%s %d", string(hnapAuth), ts))
 
 	req.Header.Add("Content-Type", "text/xml")

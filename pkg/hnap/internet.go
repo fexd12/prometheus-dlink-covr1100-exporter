@@ -15,3 +15,20 @@ type InternetConnectionResponse struct {
 		} `json:"Body"`
 	} `json:"Envelope"`
 }
+
+type GetInternetConnUpTimeResponse struct {
+	Xmlns                       string `json:"-xmlns"`
+	GetInternetConnUpTimeResult string `json:"GetInternetConnUpTimeResult"`
+	UpTime string `json:"UpTime"`
+}
+
+type InternetConnUpTimeResponse struct {
+	Envelope struct {
+		Soap string `json:"-soap"`
+		Xsd  string `json:"-xsd"`
+		Xsi  string `json:"-xsi"`
+		Body struct {
+			GetInternetConnUpTimeResponse GetInternetConnUpTimeResponse `json:"GetInternetConnUpTimeResponse"`
+		} `json:"Body"`
+	} `json:"Envelope"`
+}

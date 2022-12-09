@@ -1,5 +1,5 @@
 # Prometheus Exporter for the COVR200 Modem
-this is a fork of the https://github.com/jahkeup/prometheus-moto-exporter
+this is a fork of the https://github.com/Beaujr/prometheus-dlink-exporter
 
 aiming to work with DLINK COVR 2200. Currently its a work in progress, and the code is subpar focusing on results.
 

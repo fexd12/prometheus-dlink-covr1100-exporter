@@ -119,7 +119,10 @@ func (s *Server) Collect() error {
 		return err
 	}
 
-	collect, err := s.gatherer.Gather()
+	collect, err := &gather.Collection{}, nil
+
+	collect, err = s.gatherer.Gather()
+
 	if err != nil {
 		return err
 	}
@@ -136,7 +139,7 @@ func (s *Server) Collect() error {
 		s.connection.RecordOne(&info)
 	}
 	iFace := map[string]float64{}
-	for _, info := range collect.Clients.Envelope.Body.GetClientInfoResponse.ClientInfoLists.ClientInfo {
+	for _, info := range collect.Clients {
 		if _, ok := iFace[info.Type]; !ok {
 			iFace[info.Type] = 0
 		}

@@ -7,7 +7,7 @@ type Collection struct {
 	Downstream []hnap.DownstreamInfo
 	Connection []hnap.GetInterfaceStatisticsResponse
 	Online     bool
-	Clients    hnap.Clients
+	Clients    []hnap.ClientInfo
 
 	SerialNumber    string
 	SoftwareVersion string
